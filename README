@@ -1,0 +1,12 @@
+Perfectstar model B
+
+Building the INDI drivers for the Perfectstar model B:
+
+In a work directory of your choosing on the RPI 
+or (linux) system that the Perfectstarb is plugged into:
+
+git clone https://github.com/sifank/PerfectStarB.git
+
+cd perfectstarb
+make
+sudo make install
