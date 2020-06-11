@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<driversList>
+<devGroup group="Focusers">
+	<device label="PerfectStarB">
+		<driver name="PerfectStarB">indi_perfectstarb_focus</driver>
+		<version>2.3</version>
+	</device>
+</devGroup>
+</driversList>
