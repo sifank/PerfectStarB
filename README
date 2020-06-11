@@ -1,5 +1,10 @@
 Perfectstar model B
 
+Dependencies:
+  c/c++
+  indifocuser.h
+  hidapi.h
+
 Building the INDI drivers for the Perfectstar model B:
 
 In a work directory of your choosing on the RPI 
