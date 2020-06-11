@@ -18,6 +18,6 @@ system that the Perfectstarb is plugged into:
 
 git clone https://github.com/sifank/PerfectStarB.git
 
-cd perfectstarb
+cd PerfectStarB
 make
 sudo make install
