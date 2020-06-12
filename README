@@ -1,23 +1,29 @@
-Perfectstar model B
+PerfectStar model B
 
-Dependencies:
+Installing binaries for Ubuntu on Raspberry Pi:
+ In a work directory of your choosing:
+   git clone https://github.com/sifank/PerfectStarB.git
+   cd PerfectStarB/binaries/RPI-Ubuntu/
+   sudo make install
+
+Building PerfectStar Model B drivers:
+ Dependencies:
   c/c++
   indifocuser.h
   hidapi.h
   
-The best way to build this driver, is on a std Ubuntu system,
-I have found that the repository for the INDI drivers is not 
-available on Raspbian.  You will need to follow the standard 
-process for setting up an INDI development environment.  See 
-https://indilib.org/develop/developer-manual/163-setting-development-environment.html
+
+ The best way to build this driver, is on a std Ubuntu system,
+ I have found that the repository for the INDI drivers is not 
+ available on Raspbian.  You will need to follow the standard 
+ process for setting up an INDI development environment.  See 
+ https://indilib.org/develop/developer-manual/163-setting-development-environment.html
 
 Building the INDI drivers for the Perfectstar model B:
+ In a work directory of your choosing on the Ubuntu
+ system that the Perfectstarb is plugged into:
 
-In a work directory of your choosing on the Ubuntu
-system that the Perfectstarb is plugged into:
-
-git clone https://github.com/sifank/PerfectStarB.git
-
-cd PerfectStarB
-make
-sudo make install
+ git clone https://github.com/sifank/PerfectStarB.git
+ cd PerfectStarB
+ make
+ sudo make install
