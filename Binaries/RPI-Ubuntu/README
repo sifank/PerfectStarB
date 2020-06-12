@@ -1,5 +1,9 @@
-These are the pre-built binaries for the PerfectStarB to be run
-on a Raspberry Pi running the Ubuntu OS
+These are the pre-built binaries for the PerfectStarB
+
+Dependencies:
+ Raspberry PI 3 or 4 b
+ Ubuntu V18 and above
+ KSTAR and INDI drivers installed
 
 Installation:
-sudo make install
+ sudo make install
