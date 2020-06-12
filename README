@@ -10,6 +10,8 @@ Installing the pre-built binary for Ubuntu on Raspberry Pi:
 ------------------------------------------------------------
 To build the PerfectStar Model B driver from scratch:
  Dependencies:
+  Ubuntu V18 and above
+  KSTAR and INDI drivers installed
   c/c++
   indifocuser.h
   hidapi.h
