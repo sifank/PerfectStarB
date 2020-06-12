@@ -1,0 +1,5 @@
+These are the pre-built binaries for the PerfectStarB to be run
+on a Raspberry Pi running the Ubuntu OS
+
+Installation:
+sudo make install
