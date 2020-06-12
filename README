@@ -1,18 +1,19 @@
 PerfectStar model B
 
-Installing binaries for Ubuntu on Raspberry Pi:
+------------------------------------------------------------
+Installing binary for Ubuntu on Raspberry Pi:
  In a work directory of your choosing:
    git clone https://github.com/sifank/PerfectStarB.git
    cd PerfectStarB/binaries/RPI-Ubuntu/
    sudo make install
 
-Building PerfectStar Model B drivers:
+------------------------------------------------------------
+To build the PerfectStar Model B driver:
  Dependencies:
   c/c++
   indifocuser.h
   hidapi.h
   
-
  The best way to build this driver, is on a std Ubuntu system,
  I have found that the repository for the INDI drivers is not 
  available on Raspbian.  You will need to follow the standard 
