@@ -1,9 +1,8 @@
 /*******************************************************************************
-  Copyright(c) 2019 Jasem Mutlaq. All rights reserved.
+  Copyright(c) 2015 Jasem Mutlaq. All rights reserved.
+  Modified for Wa-chur-ed Observatory's PerfectStarB by Sifan Kahale 2022
 
- (Originally) Starlight Instruments EFS Focuser
-
- Modified by Sifan Kahale (2020) for Starlight's PerfectStar B Focuser
+ PerfectStarB Focuser
 
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Library General Public
@@ -18,11 +17,6 @@
  along with this library; see the file COPYING.LIB.  If not, write to
  the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  Boston, MA 02110-1301, USA.
- 
- Modified by:  Sifan Kahale for the Perfectstar model B
- Changed:
-    HID PID 
-    Accept m_Motor of -3
 *******************************************************************************/
 
 #include "perfectstarb.h"
@@ -31,82 +25,26 @@
 #include <cstring>
 #include <memory>
 
+#define PERFECTSTAR_TIMEOUT 1000 /* 1000 ms */
+
 #define FOCUS_SETTINGS_TAB "Settings"
 
-static std::unique_ptr<SIEFS> siefs(new SIEFS());
+// We declare an auto pointer to PerfectStarB.
+static std::unique_ptr<PerfectStarB> perfectStar(new PerfectStarB());
 
-const std::map<SIEFS::SI_COMMANDS, std::string> SIEFS::CommandsMap =
+PerfectStarB::PerfectStarB()
 {
-    {SIEFS::SI_NOOP, "No Operation"},
-    {SIEFS::SI_IN, "Moving Inwards"},
-    {SIEFS::SI_OUT, "Moving Outwards"},
-    {SIEFS::SI_GOTO, "Goto"},
-    {SIEFS::SI_SET_POS, "Set Position"},
-    {SIEFS::SI_MAX_POS, "Set Max Position"},
-    {SIEFS::SI_FAST_IN, "Fast In"},
-    {SIEFS::SI_FAST_OUT, "Fast Out"},
-    {SIEFS::SI_HALT, "Halt"},
-};
-
-const std::map<SIEFS::SI_MOTOR, std::string> SIEFS::MotorMap =
-{
-    {SIEFS::SI_NOT_MOVING, "Idle"},
-    {SIEFS::SI_MOVING_IN, "Moving Inwards"},
-    {SIEFS::SI_MOVING_OUT, "Moving Outwards"},
-    {SIEFS::SI_LOCKED, "Locked"},
-};
-
-void ISGetProperties(const char *dev)
-{
-    siefs->ISGetProperties(dev);
-}
-
-void ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n)
-{
-    siefs->ISNewSwitch(dev, name, states, names, n);
-}
-
-void ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n)
-{
-    siefs->ISNewText(dev, name, texts, names, n);
-}
-
-void ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n)
-{
-    siefs->ISNewNumber(dev, name, values, names, n);
-}
-
-void ISNewBLOB(const char *dev, const char *name, int sizes[], int blobsizes[], char *blobs[], char *formats[],
-               char *names[], int n)
-{
-    INDI_UNUSED(dev);
-    INDI_UNUSED(name);
-    INDI_UNUSED(sizes);
-    INDI_UNUSED(blobsizes);
-    INDI_UNUSED(blobs);
-    INDI_UNUSED(formats);
-    INDI_UNUSED(names);
-    INDI_UNUSED(n);
-}
-
-void ISSnoopDevice(XMLEle *root)
-{
-    siefs->ISSnoopDevice(root);
-}
-
-SIEFS::SIEFS()
-{
-    setVersion(0, 2);
-
     FI::SetCapability(FOCUSER_CAN_ABS_MOVE | FOCUSER_CAN_REL_MOVE | FOCUSER_CAN_ABORT | FOCUSER_CAN_SYNC);
     setSupportedConnections(CONNECTION_NONE);
 }
 
-bool SIEFS::Connect()
+bool PerfectStarB::Connect()
 {
-    if (isSimulation())
+    sim = isSimulation();
+
+    if (sim)
     {
-        SetTimer(POLLMS);
+        SetTimer(getCurrentPollingPeriod());
         return true;
     }
 
@@ -118,31 +56,14 @@ bool SIEFS::Connect()
         return false;
     }
     else
-    {
-        uint32_t maximumPosition = 0;
-        bool rc = getMaxPosition(&maximumPosition);
-        if (rc)
-        {
-            FocusMaxPosN[0].value = maximumPosition;
-
-            FocusAbsPosN[0].max = FocusSyncN[0].max = FocusMaxPosN[0].value;
-            FocusAbsPosN[0].step = FocusSyncN[0].step = FocusMaxPosN[0].value / 50.0;
-            FocusAbsPosN[0].min = FocusSyncN[0].min = 0;
-
-            FocusRelPosN[0].max  = FocusMaxPosN[0].value / 2;
-            FocusRelPosN[0].step = FocusMaxPosN[0].value / 100.0;
-            FocusRelPosN[0].min  = 0;
-        }
-
-        SetTimer(POLLMS);
-    }
+        SetTimer(getCurrentPollingPeriod());
 
     return (handle != nullptr);
 }
 
-bool SIEFS::Disconnect()
+bool PerfectStarB::Disconnect()
 {
-    if (isSimulation() == false)
+    if (!sim)
     {
         hid_close(handle);
         hid_exit();
@@ -151,54 +72,90 @@ bool SIEFS::Disconnect()
     return true;
 }
 
-const char *SIEFS::getDefaultName()
+const char *PerfectStarB::getDefaultName()
 {
-    return "PerfectStar B";
+    return (const char *)"PerfectStarB";
 }
 
-bool SIEFS::initProperties()
+bool PerfectStarB::initProperties()
 {
     INDI::Focuser::initProperties();
+
+    // Max Position
+//    IUFillNumber(&MaxPositionN[0], "Steps", "", "%.f", 0, 500000, 0., 10000);
+//    IUFillNumberVector(&MaxPositionNP, MaxPositionN, 1, getDeviceName(), "Max Position", "", FOCUS_SETTINGS_TAB, IP_RW,
+//                       0, IPS_IDLE);
+
+//    // Sync to a particular position
+//    IUFillNumber(&SyncN[0], "Ticks", "", "%.f", 0, 100000, 100., 0.);
+//    IUFillNumberVector(&SyncNP, SyncN, 1, getDeviceName(), "Sync", "", MAIN_CONTROL_TAB, IP_RW, 0, IPS_IDLE);
+
+//    FocusAbsPosN[0].min = SyncN[0].min = 0;
+//    FocusAbsPosN[0].max = SyncN[0].max = MaxPositionN[0].value;
+//    FocusAbsPosN[0].step = SyncN[0].step = MaxPositionN[0].value / 50.0;
+//    FocusAbsPosN[0].value                = 0;
+
+//    FocusRelPosN[0].max   = (FocusAbsPosN[0].max - FocusAbsPosN[0].min) / 2;
+//    FocusRelPosN[0].step  = FocusRelPosN[0].max / 100.0;
+//    FocusRelPosN[0].value = 100;
 
     addSimulationControl();
 
     return true;
 }
 
-void SIEFS::TimerHit()
+bool PerfectStarB::updateProperties()
+{
+    INDI::Focuser::updateProperties();
+
+//    if (isConnected())
+//    {
+//        defineProperty(&SyncNP);
+//        defineProperty(&MaxPositionNP);
+//    }
+//    else
+//    {
+//        deleteProperty(SyncNP.name);
+//        deleteProperty(MaxPositionNP.name);
+//    }
+
+    return true;
+}
+
+void PerfectStarB::TimerHit()
 {
     if (!isConnected())
         return;
 
     uint32_t currentTicks = 0;
 
-    bool rc = getAbsPosition(&currentTicks);
+    bool rc = getPosition(&currentTicks);
 
     if (rc)
         FocusAbsPosN[0].value = currentTicks;
 
-    getStatus();
+    getStatus(&status);
 
     if (FocusAbsPosNP.s == IPS_BUSY || FocusRelPosNP.s == IPS_BUSY)
     {
-        if (isSimulation())
+        if (sim)
         {
             if (FocusAbsPosN[0].value < targetPosition)
                 simPosition += 500;
             else
                 simPosition -= 500;
 
-            if (std::abs(simPosition - static_cast<int32_t>(targetPosition)) < 500)
+            if (std::abs((int64_t)simPosition - (int64_t)targetPosition) < 500)
             {
                 FocusAbsPosN[0].value = targetPosition;
-                simPosition = FocusAbsPosN[0].value;
-                m_Motor = SI_NOT_MOVING;
+                simPosition           = FocusAbsPosN[0].value;
+                status                = PS_NOOP;
             }
 
             FocusAbsPosN[0].value = simPosition;
         }
 
-        if (m_Motor == SI_NOT_MOVING && targetPosition == FocusAbsPosN[0].value)
+        if (status == PS_HALT && targetPosition == FocusAbsPosN[0].value)
         {
             if (FocusRelPosNP.s == IPS_BUSY)
             {
@@ -207,26 +164,85 @@ void SIEFS::TimerHit()
             }
 
             FocusAbsPosNP.s = IPS_OK;
-            LOGF_INFO("Focuser now at %d", targetPosition);
             LOG_DEBUG("Focuser reached target position.");
+        }
+        else if (status == PS_NOOP)
+        {
+            if (FocusRelPosNP.s == IPS_BUSY)
+            {
+                FocusRelPosNP.s = IPS_OK;
+                IDSetNumber(&FocusRelPosNP, nullptr);
+            }
+
+            FocusAbsPosNP.s = IPS_OK;
+            LOG_INFO("Focuser reached home position.");
         }
     }
 
     IDSetNumber(&FocusAbsPosNP, nullptr);
 
-    SetTimer(POLLMS);
+    SetTimer(getCurrentPollingPeriod());
 }
 
-IPState SIEFS::MoveAbsFocuser(uint32_t targetTicks)
+bool PerfectStarB::ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n)
 {
-    bool rc = setAbsPosition(targetTicks);
+    if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
+    {
+        // Max Travel
+//        if (strcmp(MaxPositionNP.name, name) == 0)
+//        {
+//            IUUpdateNumber(&MaxPositionNP, values, names, n);
+
+//            if (MaxPositionN[0].value > 0)
+//            {
+//                FocusAbsPosN[0].min = SyncN[0].min = 0;
+//                FocusAbsPosN[0].max = SyncN[0].max = MaxPositionN[0].value;
+//                FocusAbsPosN[0].step = SyncN[0].step = MaxPositionN[0].value / 50.0;
+
+//                FocusRelPosN[0].max  = (FocusAbsPosN[0].max - FocusAbsPosN[0].min) / 2;
+//                FocusRelPosN[0].step = FocusRelPosN[0].max / 100.0;
+//                FocusRelPosN[0].min  = 0;
+
+//                IUUpdateMinMax(&FocusAbsPosNP);
+//                IUUpdateMinMax(&FocusRelPosNP);
+//                IUUpdateMinMax(&SyncNP);
+
+//                LOGF_INFO("Focuser absolute limits: min (%g) max (%g)", FocusAbsPosN[0].min,
+//                       FocusAbsPosN[0].max);
+//            }
+
+//            MaxPositionNP.s = IPS_OK;
+//            IDSetNumber(&MaxPositionNP, nullptr);
+//            return true;
+//        }
+
+        // Sync
+//        if (strcmp(SyncNP.name, name) == 0)
+//        {
+//            IUUpdateNumber(&SyncNP, values, names, n);
+//            if (!sync(SyncN[0].value))
+//                SyncNP.s = IPS_ALERT;
+//            else
+//                SyncNP.s = IPS_OK;
+
+//            IDSetNumber(&SyncNP, nullptr);
+//            return true;
+//        }
+    }
+
+    return INDI::Focuser::ISNewNumber(dev, name, values, names, n);
+}
+
+IPState PerfectStarB::MoveAbsFocuser(uint32_t targetTicks)
+{
+    bool rc = setPosition(targetTicks);
 
     if (!rc)
         return IPS_ALERT;
 
     targetPosition = targetTicks;
 
-    rc = sendCommand(SI_GOTO);
+    rc = setStatus(PS_GOTO);
 
     if (!rc)
         return IPS_ALERT;
@@ -236,36 +252,29 @@ IPState SIEFS::MoveAbsFocuser(uint32_t targetTicks)
     return IPS_BUSY;
 }
 
-IPState SIEFS::MoveRelFocuser(FocusDirection dir, uint32_t ticks)
+IPState PerfectStarB::MoveRelFocuser(FocusDirection dir, uint32_t ticks)
 {
-    int direction = (dir == FOCUS_INWARD) ? -1 : 1;
-    int reversed = (FocusReverseS[INDI_ENABLED].s == ISS_ON) ? -1 : 1;
-    int relative = static_cast<int>(ticks);
+    uint32_t finalTicks = FocusAbsPosN[0].value + (ticks * (dir == FOCUS_INWARD ? -1 : 1));
 
-    int targetAbsPosition = FocusAbsPosN[0].value + (relative * direction * reversed);
-
-    targetAbsPosition = std::min(static_cast<uint32_t>(FocusMaxPosN[0].value)
-                                 , static_cast<uint32_t>(std::max(static_cast<int>(FocusAbsPosN[0].min), targetAbsPosition)));
-
-    return MoveAbsFocuser(targetAbsPosition);
+    return MoveAbsFocuser(finalTicks);
 }
 
-bool SIEFS::setPosition(uint32_t ticks, uint8_t cmdCode)
+bool PerfectStarB::setPosition(uint32_t ticks)
 {
     int rc = 0;
-    uint8_t command[3];
-    uint8_t response[3];
+    unsigned char command[3];
+    unsigned char response[3];
 
     // 20 bit resolution position. 4 high bits + 16 lower bits
 
     // Send 4 high bits first
-    command[0] = cmdCode + 8;
+    command[0] = 0x28;
     command[1] = (ticks & 0x40000) >> 16;
 
-    LOGF_DEBUG("Set %s Position (%ld)", cmdCode == 0x20 ? "Absolute" : "Maximum", ticks);
-    LOGF_DEBUG("CMD <%02X %02X>", command[0], command[1]);
+    LOGF_DEBUG("Set Position (%ld)", ticks);
+    LOGF_DEBUG("CMD (%02X %02X)", command[0], command[1]);
 
-    if (isSimulation())
+    if (sim)
         rc = 2;
     else
         rc = hid_write(handle, command, 2);
@@ -276,14 +285,14 @@ bool SIEFS::setPosition(uint32_t ticks, uint8_t cmdCode)
         return false;
     }
 
-    if (isSimulation())
+    if (sim)
     {
         rc          = 2;
-        response[0] = cmdCode + 8;
+        response[0] = 0x28;
         response[1] = command[1];
     }
     else
-        rc = hid_read_timeout(handle, response, 2, SI_TIMEOUT);
+        rc = hid_read_timeout(handle, response, 2, PERFECTSTAR_TIMEOUT);
 
     if (rc < 0)
     {
@@ -291,18 +300,18 @@ bool SIEFS::setPosition(uint32_t ticks, uint8_t cmdCode)
         return false;
     }
 
-    LOGF_DEBUG("RES <%02X %02X>", response[0], response[1]);
+    LOGF_DEBUG("RES (%02X %02X)", response[0], response[1]);
 
     // Send lower 16 bit
-    command[0] = cmdCode;
+    command[0] = 0x20;
     // Low Byte
     command[1] = ticks & 0xFF;
     // High Byte
     command[2] = (ticks & 0xFF00) >> 8;
 
-    LOGF_DEBUG("CMD <%02X %02X %02X>", command[0], command[1], command[2]);
+    LOGF_DEBUG("CMD (%02X %02X %02X)", command[0], command[1], command[2]);
 
-    if (isSimulation())
+    if (sim)
         rc = 3;
     else
         rc = hid_write(handle, command, 3);
@@ -313,7 +322,7 @@ bool SIEFS::setPosition(uint32_t ticks, uint8_t cmdCode)
         return false;
     }
 
-    if (isSimulation())
+    if (sim)
     {
         rc          = 3;
         response[0] = command[0];
@@ -321,7 +330,7 @@ bool SIEFS::setPosition(uint32_t ticks, uint8_t cmdCode)
         response[2] = command[2];
     }
     else
-        rc = hid_read_timeout(handle, response, 3, SI_TIMEOUT);
+        rc = hid_read_timeout(handle, response, 3, PERFECTSTAR_TIMEOUT);
 
     if (rc < 0)
     {
@@ -329,7 +338,7 @@ bool SIEFS::setPosition(uint32_t ticks, uint8_t cmdCode)
         return false;
     }
 
-    LOGF_DEBUG("RES <%02X %02X %02X>", response[0], response[1], response[2]);
+    LOGF_DEBUG("RES (%02X %02X %02X)", response[0], response[1], response[2]);
 
     targetPosition = ticks;
 
@@ -337,22 +346,22 @@ bool SIEFS::setPosition(uint32_t ticks, uint8_t cmdCode)
     return true;
 }
 
-bool SIEFS::getPosition(uint32_t *ticks, uint8_t cmdCode)
+bool PerfectStarB::getPosition(uint32_t *ticks)
 {
     int rc       = 0;
     uint32_t pos = 0;
-    uint8_t command[1] = {0};
-    uint8_t response[3] = {0};
+    unsigned char command[1];
+    unsigned char response[3];
 
     // 20 bit resolution position. 4 high bits + 16 lower bits
 
     // Get 4 high bits first
-    command[0] = cmdCode + 8;
+    command[0] = 0x29;
 
-    LOGF_DEBUG("Get %s Position (High 4 bits)", cmdCode == 0x21 ? "Absolute" : "Maximum");
-    LOGF_DEBUG("CMD <%02X>", command[0]);
+    LOG_DEBUG("Get Position (High 4 bits)");
+    LOGF_DEBUG("CMD (%02X)", command[0]);
 
-    if (isSimulation())
+    if (sim)
         rc = 2;
     else
         rc = hid_write(handle, command, 1);
@@ -363,14 +372,14 @@ bool SIEFS::getPosition(uint32_t *ticks, uint8_t cmdCode)
         return false;
     }
 
-    if (isSimulation())
+    if (sim)
     {
         rc          = 2;
         response[0] = command[0];
         response[1] = simPosition >> 16;
     }
     else
-        rc = hid_read_timeout(handle, response, 2, SI_TIMEOUT);
+        rc = hid_read_timeout(handle, response, 2, PERFECTSTAR_TIMEOUT);
 
     if (rc < 0)
     {
@@ -378,18 +387,18 @@ bool SIEFS::getPosition(uint32_t *ticks, uint8_t cmdCode)
         return false;
     }
 
-    LOGF_DEBUG("RES <%02X %02X>", response[0], response[1]);
+    LOGF_DEBUG("RES (%02X %02X)", response[0], response[1]);
 
     // Store 4 high bits part of a 20 bit number
     pos = response[1] << 16;
 
     // Get 16 lower bits
-    command[0] = cmdCode;
+    command[0] = 0x21;
 
-    LOGF_DEBUG("Get %s Position (Lower 16 bits)", cmdCode == 0x21 ? "Absolute" : "Maximum");
-    LOGF_DEBUG("CMD <%02X>", command[0]);
+    LOG_DEBUG("Get Position (Lower 16 bits)");
+    LOGF_DEBUG("CMD (%02X)", command[0]);
 
-    if (isSimulation())
+    if (sim)
         rc = 1;
     else
         rc = hid_write(handle, command, 1);
@@ -400,7 +409,7 @@ bool SIEFS::getPosition(uint32_t *ticks, uint8_t cmdCode)
         return false;
     }
 
-    if (isSimulation())
+    if (sim)
     {
         rc          = 3;
         response[0] = command[0];
@@ -408,7 +417,7 @@ bool SIEFS::getPosition(uint32_t *ticks, uint8_t cmdCode)
         response[2] = (simPosition & 0xFF00) >> 8;
     }
     else
-        rc = hid_read_timeout(handle, response, 3, SI_TIMEOUT);
+        rc = hid_read_timeout(handle, response, 3, PERFECTSTAR_TIMEOUT);
 
     if (rc < 0)
     {
@@ -416,50 +425,30 @@ bool SIEFS::getPosition(uint32_t *ticks, uint8_t cmdCode)
         return false;
     }
 
-    LOGF_DEBUG("RES <%02X %02X %02X>", response[0], response[1], response[2]);
+    LOGF_DEBUG("RES (%02X %02X %02X)", response[0], response[1], response[2]);
 
     // Res[1] is lower byte and Res[2] is high byte. Combine them and add them to ticks.
     pos |= response[1] | response[2] << 8;
 
     *ticks = pos;
 
-    LOGF_DEBUG("%s Position: %ld", cmdCode == 0x21 ? "Absolute" : "Maximum", pos);
+    LOGF_DEBUG("Position: %ld", pos);
 
     return true;
 }
 
-bool SIEFS::setAbsPosition(uint32_t ticks)
-{
-    return setPosition(ticks, 0x20);
-}
-
-bool SIEFS::getAbsPosition(uint32_t *ticks)
-{
-    return getPosition(ticks, 0x21);
-}
-
-bool SIEFS::setMaxPosition(uint32_t ticks)
-{
-    return setPosition(ticks, 0x22);
-}
-
-bool SIEFS::getMaxPosition(uint32_t *ticks)
-{
-    return getPosition(ticks, 0x23);
-}
-
-bool SIEFS::sendCommand(SI_COMMANDS targetCommand)
+bool PerfectStarB::setStatus(PS_STATUS targetStatus)
 {
     int rc = 0;
-    uint8_t command[2] = {0};
-    uint8_t response[3] = {0};
+    unsigned char command[2];
+    unsigned char response[3];
 
     command[0] = 0x10;
-    command[1] = targetCommand;
+    command[1] = (targetStatus == PS_HALT) ? 0xFF : targetStatus;
 
-    LOGF_DEBUG("CMD <%02X %02X>", command[0], command[1]);
+    LOGF_DEBUG("CMD (%02X %02X)", command[0], command[1]);
 
-    if (isSimulation())
+    if (sim)
         rc = 2;
     else
         rc = hid_write(handle, command, 2);
@@ -470,16 +459,26 @@ bool SIEFS::sendCommand(SI_COMMANDS targetCommand)
         return false;
     }
 
-    if (isSimulation())
+    if (sim)
     {
         rc          = 3;
         response[0] = command[0];
         response[1] = 0;
         response[2] = command[1];
-        //        m_Motor = targetCommand;
+        status      = targetStatus;
+        // Convert Goto to either "moving in" or "moving out" status
+        if (status == PS_GOTO)
+        {
+            // Moving in state
+            if (targetPosition < FocusAbsPosN[0].value)
+                status = PS_IN;
+            else
+                // Moving out state
+                status = PS_OUT;
+        }
     }
     else
-        rc = hid_read_timeout(handle, response, 3, SI_TIMEOUT);
+        rc = hid_read_timeout(handle, response, 3, PERFECTSTAR_TIMEOUT);
 
     if (rc < 0)
     {
@@ -487,7 +486,7 @@ bool SIEFS::sendCommand(SI_COMMANDS targetCommand)
         return false;
     }
 
-    LOGF_DEBUG("RES <%02X %02X %02X>", response[0], response[1], response[2]);
+    LOGF_DEBUG("RES (%02X %02X %02X)", response[0], response[1], response[2]);
 
     if (response[1] == 0xFF)
     {
@@ -498,17 +497,17 @@ bool SIEFS::sendCommand(SI_COMMANDS targetCommand)
     return true;
 }
 
-bool SIEFS::getStatus()
+bool PerfectStarB::getStatus(PS_STATUS *currentStatus)
 {
     int rc = 0;
-    uint8_t command[1] = {0};
-    uint8_t response[2] = {0};
+    unsigned char command[1];
+    unsigned char response[2];
 
     command[0] = 0x11;
 
-    LOGF_DEBUG("CMD <%02X>", command[0]);
+    LOGF_DEBUG("CMD (%02X)", command[0]);
 
-    if (isSimulation())
+    if (sim)
         rc = 1;
     else
         rc = hid_write(handle, command, 1);
@@ -519,17 +518,17 @@ bool SIEFS::getStatus()
         return false;
     }
 
-    if (isSimulation())
+    if (sim)
     {
         rc          = 2;
         response[0] = command[0];
-        response[1] = m_Motor;
+        response[1] = status;
         // Halt/SetPos is state = 0 "not moving".
-        //        if (response[1] == SI_HALT || response[1] == SI_SET_POS)
-        //            response[1] = 0;
+        if (response[1] == PS_HALT || response[1] == PS_SETPOS)
+            response[1] = 0;
     }
     else
-        rc = hid_read_timeout(handle, response, 2, SI_TIMEOUT);
+        rc = hid_read_timeout(handle, response, 2, PERFECTSTAR_TIMEOUT);
 
     if (rc < 0)
     {
@@ -537,52 +536,70 @@ bool SIEFS::getStatus()
         return false;
     }
 
-    LOGF_DEBUG("RES <%02X %02X>", response[0], response[1]);
+    LOGF_DEBUG("RES (%02X %02X)", response[0], response[1]);
 
-    m_Motor = static_cast<SI_MOTOR>(response[1]);
-    if (MotorMap.count(m_Motor) == -3)
-        LOGF_WARN("Warning: Ignoring status (%d)", response[1]);
-        return true;
-    
-    if (MotorMap.count(m_Motor) > 0)
-        LOGF_DEBUG("State: %s", MotorMap.at(m_Motor).c_str());
-    else
+    switch (response[1])
     {
-        LOGF_WARN("Warning: Unknown status (%f)", response[1]);
-        return false;
+        case 0:
+            *currentStatus = PS_HALT;
+            LOG_DEBUG("State: Not moving.");
+            break;
+
+        case 1:
+            *currentStatus = PS_IN;
+            LOG_DEBUG("State: Moving in.");
+            break;
+
+        case 3:
+            *currentStatus = PS_GOTO;
+            LOG_DEBUG("State: Goto.");
+            break;
+
+        case 2:
+            *currentStatus = PS_OUT;
+            LOG_DEBUG("State: Moving out.");
+            break;
+
+        case 5:
+            *currentStatus = PS_LOCKED;
+            LOG_DEBUG("State: Locked.");
+            break;
+
+        default:
+            LOGF_WARN("Warning: Unknown status (%d)", response[1]);
+            return false;
+            break;
     }
 
     return true;
 }
 
-bool SIEFS::AbortFocuser()
+bool PerfectStarB::AbortFocuser()
 {
-    return sendCommand(SI_HALT);
+    return setStatus(PS_HALT);
 }
 
-bool SIEFS::SyncFocuser(uint32_t ticks)
+//bool PerfectStarB::sync(uint32_t ticks)
+bool PerfectStarB::SyncFocuser(uint32_t ticks)
 {
-    bool rc = setAbsPosition(ticks);
+    bool rc = setPosition(ticks);
 
     if (!rc)
         return false;
 
     simPosition = ticks;
 
-    rc = sendCommand(SI_SET_POS);
+    rc = setStatus(PS_SETPOS);
 
     return rc;
 }
 
-bool SIEFS::SetFocuserMaxPosition(uint32_t ticks)
-{
-    bool rc = setAbsPosition(ticks);
+//bool PerfectStarB::saveConfigItems(FILE *fp)
+//{
+//    INDI::Focuser::saveConfigItems(fp);
 
-    if (!rc)
-        return false;
+//    IUSaveConfigNumber(fp, &MaxPositionNP);
 
-    rc = sendCommand(SI_MAX_POS);
-
-    return rc;
-}
+//    return true;
+//}
 

@@ -1,9 +1,8 @@
 /*******************************************************************************
-  Copyright(c) 2019 Jasem Mutlaq. All rights reserved.
+  Copyright(c) 2015 Jasem Mutlaq. All rights reserved.
+  Modified for Wa-chur-ed Observatory's PerfectStarB by Sifan Kahale 2022
 
- (Originally) Starlight Instruments EFS Focuser
-
- Modified by Sifan Kahale for Starlight Instruments for the PerfectStar B
+ PerfectStarB Focuser
 
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Library General Public
@@ -25,86 +24,53 @@
 #include "indifocuser.h"
 #include "hidapi.h"
 
-#include <map>
-
-class SIEFS : public INDI::Focuser
+class PerfectStarB : public INDI::Focuser
 {
-    public:
+  public:
+    // Perfect Star (PS) status
+    typedef enum { PS_NOOP, PS_IN, PS_OUT, PS_GOTO, PS_SETPOS, PS_LOCKED, PS_HALT = 0xFF } PS_STATUS;
 
-    // PerfectStarB State
-    typedef enum { SI_NOOP,
-                   SI_IN,
-                   SI_OUT,
-                   SI_GOTO,
-                   SI_SET_POS,
-                   SI_MAX_POS,
-                   SI_FAST_IN  = 0x11,
-                   SI_FAST_OUT = 0x12,
-                   SI_HALT     = 0xFF
-                  } SI_COMMANDS;
+    PerfectStarB();
+    virtual ~PerfectStarB() override = default;
 
+    virtual bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
 
-    // SI EFS Motor State
-    typedef enum { SI_NOT_MOVING,
-                   SI_MOVING_IN,
-                   SI_MOVING_OUT,
-                   SI_LOCKED = 5,
-                 } SI_MOTOR;
+    const char *getDefaultName() override;
+    virtual bool initProperties() override;
+    virtual bool updateProperties() override;
+    //virtual bool saveConfigItems(FILE *fp) override;
 
+    virtual bool Connect() override;
+    virtual bool Disconnect() override;
 
-        SIEFS();
+    virtual void TimerHit() override;
 
-        const char *getDefaultName() override;
-        virtual bool initProperties() override;
+    virtual IPState MoveAbsFocuser(uint32_t targetTicks) override;
+    virtual IPState MoveRelFocuser(FocusDirection dir, uint32_t ticks) override;
+    virtual bool AbortFocuser() override;
+    virtual bool SyncFocuser(uint32_t ticks) override;
 
-        virtual bool Connect() override;
-        virtual bool Disconnect() override;
+  private:
+    bool setPosition(uint32_t ticks);
+    bool getPosition(uint32_t *ticks);
 
-        virtual void TimerHit() override;
+    bool setStatus(PS_STATUS targetStatus);
+    bool getStatus(PS_STATUS *currentStatus);
 
-        virtual IPState MoveAbsFocuser(uint32_t targetTicks) override;
-        virtual IPState MoveRelFocuser(FocusDirection dir, uint32_t ticks) override;
-        virtual bool AbortFocuser() override;
-        virtual bool SyncFocuser(uint32_t ticks) override;
-        virtual bool SetFocuserMaxPosition(uint32_t ticks) override;
+    //bool sync(uint32_t ticks);
 
-    private:
-        /**
-         * @brief setPosition Set Position (Either Absolute or Maximum)
-         * @param ticks desired position
-         * @param cmdCode 0x20 to set Absolute position. 0x22 to set Maximum position
-         * @return True if successful, false otherwise.
-         */
-        bool setPosition(uint32_t ticks, uint8_t cmdCode);
+    hid_device *handle { nullptr };
+    PS_STATUS status { PS_NOOP };
+    bool sim { false };
+    uint32_t simPosition { 0 };
+    uint32_t targetPosition { 0 };
 
-        /**
-         * @brief getPosition Get Position (Either Absolute or Maximum)
-         * @param ticks pointer to store the returned position.
-         * @param cmdCode 0x21 to get Absolute position. 0x23 to get Maximum position
-         * @return True if successful, false otherwise.
-         */
-        bool getPosition(uint32_t *ticks, uint8_t cmdCode);
+    // Max position in ticks
+//    INumber MaxPositionN[1];
+//    INumberVectorProperty MaxPositionNP;
 
-        // Set/Get Absolute Position
-        bool setAbsPosition(uint32_t ticks);
-        bool getAbsPosition(uint32_t *ticks);
-
-        // Set/Get Maximum Position
-        bool setMaxPosition(uint32_t ticks);
-        bool getMaxPosition(uint32_t *ticks);
-
-        bool sendCommand(SI_COMMANDS targetCommand);
-        bool getStatus();
-
-        hid_device *handle { nullptr };
-        SI_MOTOR m_Motor { SI_NOT_MOVING };
-        int32_t simPosition { 0 };
-        uint32_t targetPosition { 0 };
-
-        // Driver Timeout in ms
-        static const uint16_t SI_TIMEOUT { 1000 };
-
-        static const std::map<SI_COMMANDS, std::string> CommandsMap;
-        static const std::map<SI_MOTOR, std::string> MotorMap;
+//    // Sync to a particular position
+//    INumber SyncN[1];
+//    INumberVectorProperty SyncNP;
 };
 
